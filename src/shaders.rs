@@ -2,6 +2,7 @@ use crate::Uniforms;
 use crate::fragment::Fragment;
 use crate::vertex::Vertex;
 use crate::simplex::Simplex;
+use crate::cellular::CellularNoise;
 use raylib::prelude::*;
 
 #[derive(Debug, Clone, Copy)]
@@ -302,28 +303,41 @@ pub fn mocca_shader(fragment: &Fragment) -> Vector3 {
 
 pub fn sun_shader(fragment: &Fragment, time: f32) -> Vector3 {
     let simplex = Simplex::new();
+    let cellular = CellularNoise::new();
     
     let u = fragment.color.y;
     let v = fragment.color.z;
+    
+    let cell_scale = 8.0;
+    let cell_speed = 0.3;
+    let cells = cellular.cellular2d(
+        u * cell_scale + time * cell_speed,
+        v * cell_scale + time * cell_speed * 0.7
+    );
+    
+    let cell_edges = cellular.cellular2d_f2_f1(
+        u * cell_scale * 0.5 - time * cell_speed * 0.4,
+        v * cell_scale * 0.5 + time * cell_speed * 0.3
+    );
     
     let surface_scale = 6.0;
     let surface_speed = 0.4;
     let surface = simplex.fbm(
         u * surface_scale + time * surface_speed,
         v * surface_scale + time * surface_speed * 0.6,
-        4,
+        3,
         2.0,
         0.5
     );
     
-    let variation_scale = 4.0;
-    let variation_speed = 0.35;
-    let variations = simplex.fbm(
-        u * variation_scale - time * variation_speed * 0.5,
-        v * variation_scale + time * variation_speed * 0.4,
-        3,
+    let turbulence_scale = 10.0;
+    let turbulence_speed = 0.5;
+    let turbulence = simplex.fbm(
+        u * turbulence_scale - time * turbulence_speed * 0.6,
+        v * turbulence_scale + time * turbulence_speed * 0.8,
+        4,
         2.2,
-        0.6
+        0.45
     );
     
     let wave_scale = 2.5;
@@ -333,42 +347,47 @@ pub fn sun_shader(fragment: &Fragment, time: f32) -> Vector3 {
         v * wave_scale - time * wave_speed * 1.2
     );
     
-    let pulse_scale = 2.0;
-    let pulse_speed = 0.8;
-    let pulse = simplex.noise2d(
-        u * pulse_scale + (time * pulse_speed).sin() * 0.5,
-        v * pulse_scale + (time * pulse_speed).cos() * 0.5
-    );
+    let base_yellow = Vector3::new(1.0, 0.88, 0.25);
+    let bright_yellow = Vector3::new(1.0, 0.95, 0.40);
+    let warm_yellow = Vector3::new(1.0, 0.80, 0.18);
+    let golden = Vector3::new(0.95, 0.70, 0.12);
+    let hot_spot = Vector3::new(1.0, 0.98, 0.55);
     
-    let base_yellow = Vector3::new(1.0, 0.90, 0.30);
-    let light_yellow = Vector3::new(1.0, 0.95, 0.45);
-    let warm_yellow = Vector3::new(1.0, 0.82, 0.20);
-    let golden = Vector3::new(0.95, 0.75, 0.15);
+    let cell_norm = (1.0 - cells).clamp(0.0, 1.0);
+    let mut color = base_yellow;
+    
+    if cell_norm > 0.7 {
+        let intensity = smoothstep(0.7, 0.9, cell_norm);
+        color = color * (1.0 - intensity * 0.6) + hot_spot * intensity * 0.6;
+    }
+    
+    let edge_norm = (cell_edges * 2.0).clamp(0.0, 1.0);
+    if edge_norm > 0.4 {
+        let intensity = smoothstep(0.4, 0.7, edge_norm);
+        color = color * (1.0 - intensity * 0.4) + golden * intensity * 0.4;
+    }
     
     let surface_norm = surface * 0.5 + 0.5;
-    let mut color = base_yellow * 0.5 + surface_norm * 0.5;
+    color = color * (0.8 + surface_norm * 0.4);
     
-    let var_norm = variations * 0.5 + 0.5;
-    if var_norm > 0.55 {
-        let blend = smoothstep(0.55, 0.75, var_norm) * 0.6;
-        color = color * (1.0 - blend) + light_yellow * blend;
-    } else if var_norm < 0.45 {
-        let blend = smoothstep(0.45, 0.25, var_norm) * 0.5;
+    let turb_norm = turbulence * 0.5 + 0.5;
+    if turb_norm > 0.6 {
+        let blend = smoothstep(0.6, 0.8, turb_norm) * 0.5;
+        color = color * (1.0 - blend) + bright_yellow * blend;
+    } else if turb_norm < 0.4 {
+        let blend = smoothstep(0.4, 0.2, turb_norm) * 0.4;
         color = color * (1.0 - blend) + warm_yellow * blend;
     }
     
     let wave_norm = waves * 0.5 + 0.5;
-    if wave_norm > 0.65 {
-        let blend = smoothstep(0.65, 0.8, wave_norm) * 0.4;
-        color = color * (1.0 - blend) + golden * blend;
-    }
+    let wave_intensity = wave_norm * 0.15;
+    color = color * (1.0 + wave_intensity);
     
-    let pulse_norm = pulse * 0.5 + 0.5;
-    let pulse_intensity = ((time * 1.2).sin() * 0.5 + 0.5) * 0.15;
-    color = color * (1.0 + pulse_intensity * pulse_norm);
-    
-    let global_pulse = ((time * 0.6).sin() * 0.5 + 0.5) * 0.2;
+    let global_pulse = ((time * 0.8).sin() * 0.5 + 0.5) * 0.25;
     color = color * (1.0 + global_pulse);
+    
+    let cell_pulse = ((time * 1.5 + cell_norm * 3.14).sin() * 0.5 + 0.5) * 0.2;
+    color = color * (1.0 + cell_pulse);
     
     color.x = color.x.clamp(0.0, 1.0);
     color.y = color.y.clamp(0.0, 1.0);
@@ -379,7 +398,7 @@ pub fn sun_shader(fragment: &Fragment, time: f32) -> Vector3 {
 
 pub fn fragment_shaders(
     fragment: &Fragment,
-    uniforms: &Uniforms,
+    _uniforms: &Uniforms,
     shader_type: ShaderType,
     time: f32,
 ) -> Vector3 {

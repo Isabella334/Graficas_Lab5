@@ -8,6 +8,7 @@ mod camera;
 mod shaders;
 mod light;
 mod simplex;
+mod cellular;
 
 use triangle::triangle;
 use obj_loader::Obj;
