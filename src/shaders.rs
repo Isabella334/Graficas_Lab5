@@ -306,72 +306,69 @@ pub fn sun_shader(fragment: &Fragment, time: f32) -> Vector3 {
     let u = fragment.color.y;
     let v = fragment.color.z;
     
-    let granule_scale = 8.0;
-    let granule_speed = 0.3;
-    let granules = simplex.fbm(
-        u * granule_scale + time * granule_speed,
-        v * granule_scale,
+    let surface_scale = 6.0;
+    let surface_speed = 0.4;
+    let surface = simplex.fbm(
+        u * surface_scale + time * surface_speed,
+        v * surface_scale + time * surface_speed * 0.6,
         4,
         2.0,
         0.5
     );
     
-    let sunspot_scale = 3.0;
-    let sunspot_speed = 0.15;
-    let sunspots = simplex.fbm(
-        u * sunspot_scale + time * sunspot_speed * 0.5,
-        v * sunspot_scale + time * sunspot_speed * 0.3,
+    let variation_scale = 4.0;
+    let variation_speed = 0.35;
+    let variations = simplex.fbm(
+        u * variation_scale - time * variation_speed * 0.5,
+        v * variation_scale + time * variation_speed * 0.4,
         3,
         2.2,
         0.6
     );
     
-    let flare_scale = 2.5;
-    let flare_speed = 0.8;
-    let flares = simplex.fbm(
-        u * flare_scale + (time * flare_speed).sin() * 0.5,
-        v * flare_scale + (time * flare_speed).cos() * 0.5,
-        2,
-        2.5,
-        0.4
-    );
-    
-    let wave_scale = 1.5;
-    let wave_speed = 0.5;
+    let wave_scale = 2.5;
+    let wave_speed = 0.25;
     let waves = simplex.noise2d(
         u * wave_scale + time * wave_speed,
-        v * wave_scale - time * wave_speed * 0.7
+        v * wave_scale - time * wave_speed * 1.2
     );
     
-    let core_color = Vector3::new(1.0, 0.95, 0.7);
-    let mid_color = Vector3::new(1.0, 0.7, 0.3);
-    let dark_spot = Vector3::new(0.3, 0.15, 0.05);
-    let flare_color = Vector3::new(1.0, 0.9, 0.5);
+    let pulse_scale = 2.0;
+    let pulse_speed = 0.8;
+    let pulse = simplex.noise2d(
+        u * pulse_scale + (time * pulse_speed).sin() * 0.5,
+        v * pulse_scale + (time * pulse_speed).cos() * 0.5
+    );
     
-    let mut color = core_color * (0.7 + granules * 0.3) + mid_color * (0.3 - granules * 0.3);
+    let base_yellow = Vector3::new(1.0, 0.90, 0.30);
+    let light_yellow = Vector3::new(1.0, 0.95, 0.45);
+    let warm_yellow = Vector3::new(1.0, 0.82, 0.20);
+    let golden = Vector3::new(0.95, 0.75, 0.15);
     
-    if sunspots < -0.3 {
-        let spot_intensity = smoothstep(-0.3, -0.6, sunspots);
-        color = color * (1.0 - spot_intensity * 0.7) + dark_spot * spot_intensity * 0.7;
+    let surface_norm = surface * 0.5 + 0.5;
+    let mut color = base_yellow * 0.5 + surface_norm * 0.5;
+    
+    let var_norm = variations * 0.5 + 0.5;
+    if var_norm > 0.55 {
+        let blend = smoothstep(0.55, 0.75, var_norm) * 0.6;
+        color = color * (1.0 - blend) + light_yellow * blend;
+    } else if var_norm < 0.45 {
+        let blend = smoothstep(0.45, 0.25, var_norm) * 0.5;
+        color = color * (1.0 - blend) + warm_yellow * blend;
     }
     
-    if flares > 0.4 {
-        let flare_intensity = smoothstep(0.4, 0.8, flares);
-        color = color * (1.0 - flare_intensity * 0.6) + flare_color * flare_intensity * 0.6;
+    let wave_norm = waves * 0.5 + 0.5;
+    if wave_norm > 0.65 {
+        let blend = smoothstep(0.65, 0.8, wave_norm) * 0.4;
+        color = color * (1.0 - blend) + golden * blend;
     }
     
-    let pulse = ((time * 1.5).sin() * 0.5 + 0.5) * 0.15;
-    color = color * (1.0 + pulse);
+    let pulse_norm = pulse * 0.5 + 0.5;
+    let pulse_intensity = ((time * 1.2).sin() * 0.5 + 0.5) * 0.15;
+    color = color * (1.0 + pulse_intensity * pulse_norm);
     
-    let wave_intensity = (waves * 0.5 + 0.5) * 0.1;
-    color = color * (1.0 + wave_intensity);
-    
-    let cx = fragment.position.x - 650.0;
-    let cy = fragment.position.y - 450.0;
-    let dist = (cx * cx + cy * cy).sqrt() / 300.0;
-    let halo = (1.0 - dist.clamp(0.0, 1.0)).powf(0.5);
-    
-    color = color * (0.8 + halo * 0.5);
+    let global_pulse = ((time * 0.6).sin() * 0.5 + 0.5) * 0.2;
+    color = color * (1.0 + global_pulse);
     
     color.x = color.x.clamp(0.0, 1.0);
     color.y = color.y.clamp(0.0, 1.0);
@@ -382,7 +379,7 @@ pub fn sun_shader(fragment: &Fragment, time: f32) -> Vector3 {
 
 pub fn fragment_shaders(
     fragment: &Fragment,
-    _uniforms: &Uniforms,
+    uniforms: &Uniforms,
     shader_type: ShaderType,
     time: f32,
 ) -> Vector3 {
