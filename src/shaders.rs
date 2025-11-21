@@ -1,6 +1,7 @@
 use crate::Uniforms;
 use crate::fragment::Fragment;
 use crate::vertex::Vertex;
+use crate::simplex::Simplex;
 use raylib::prelude::*;
 
 #[derive(Debug, Clone, Copy)]
@@ -226,9 +227,7 @@ pub fn saturn_shader(fragment: &Fragment) -> Vector3 {
     let uv = Vector2::new(u, v);
 
     let layer1 = Vector3::new(0.96, 0.92, 0.82);
-
     let layer2 = Vector3::new(0.92, 0.85, 0.70);
-
     let layer3 = Vector3::new(0.65, 0.52, 0.38);
 
     let detail = fbm2(uv * Vector2::new(2.0, 20.0), 2) * 0.03;
@@ -238,7 +237,7 @@ pub fn saturn_shader(fragment: &Fragment) -> Vector3 {
     if v > 0.4 && v < 0.6 { color = layer3; }
     if v > 0.2 && v < 0.3 { color = layer2; }
     if v > 0.7 && v < 0.8 { color = layer2; }
-    if v < 0.15 || v > 0.85 { color = layer3 * 0.8; } // polos más oscuros
+    if v < 0.15 || v > 0.85 { color = layer3 * 0.8; }
 
     color += Vector3::new(detail, detail * 0.9, detail * 0.7);
 
@@ -278,13 +277,10 @@ pub fn mocca_shader(fragment: &Fragment) -> Vector3 {
     let uv = Vector2::new(u, v);
 
     let layer1 = Vector3::new(0.86, 0.70, 0.55);
-
     let mid = fbm2(uv * 4.0 + Vector2::new(5.0, 10.0), 2);
     let layer2 = Vector3::new(0.55, 0.36, 0.22);
-
     let dark = fbm2(uv * 8.0 + Vector2::new(15.0, 25.0), 2);
     let layer3 = Vector3::new(0.35, 0.22, 0.12);
-
     let foam = fbm2(uv * 16.0 + Vector2::new(100.0, 200.0), 2);
     let layer4 = Vector3::new(0.95, 0.92, 0.88);
 
@@ -304,35 +300,96 @@ pub fn mocca_shader(fragment: &Fragment) -> Vector3 {
     color
 }
 
-pub fn sun_shader(fragment: &Fragment) -> Vector3 {
-    let cx = fragment.position.x - 400.0;
-    let cy = fragment.position.y - 300.0;
-    let dist = (cx * cx + cy * cy).sqrt() / 300.0;
-    let halo = (1.0 - dist.clamp(0.0, 1.0)).powf(0.8);
-
+pub fn sun_shader(fragment: &Fragment, time: f32) -> Vector3 {
+    let simplex = Simplex::new();
+    
     let u = fragment.color.y;
     let v = fragment.color.z;
-    let uv = Vector2::new(u * 5.0, v * 2.0); 
-    let granules = fbm2(uv * 2.0, 3).abs() * 0.6;
-
-
-    let core = Vector3::new(1.0, 0.85, 0.4);
-    let mid = Vector3::new(1.0, 0.65, 0.2);
-    let edge = Vector3::new(0.95, 0.4, 0.05);
-
-    let color = core * (1.0 - granules) + mid * granules * 0.7 + edge * granules * 0.3;
-    (color * (0.9 + halo * 0.6)).min(Vector3::new(1.0, 1.0, 1.0))
+    
+    let granule_scale = 8.0;
+    let granule_speed = 0.3;
+    let granules = simplex.fbm(
+        u * granule_scale + time * granule_speed,
+        v * granule_scale,
+        4,
+        2.0,
+        0.5
+    );
+    
+    let sunspot_scale = 3.0;
+    let sunspot_speed = 0.15;
+    let sunspots = simplex.fbm(
+        u * sunspot_scale + time * sunspot_speed * 0.5,
+        v * sunspot_scale + time * sunspot_speed * 0.3,
+        3,
+        2.2,
+        0.6
+    );
+    
+    let flare_scale = 2.5;
+    let flare_speed = 0.8;
+    let flares = simplex.fbm(
+        u * flare_scale + (time * flare_speed).sin() * 0.5,
+        v * flare_scale + (time * flare_speed).cos() * 0.5,
+        2,
+        2.5,
+        0.4
+    );
+    
+    let wave_scale = 1.5;
+    let wave_speed = 0.5;
+    let waves = simplex.noise2d(
+        u * wave_scale + time * wave_speed,
+        v * wave_scale - time * wave_speed * 0.7
+    );
+    
+    let core_color = Vector3::new(1.0, 0.95, 0.7);
+    let mid_color = Vector3::new(1.0, 0.7, 0.3);
+    let dark_spot = Vector3::new(0.3, 0.15, 0.05);
+    let flare_color = Vector3::new(1.0, 0.9, 0.5);
+    
+    let mut color = core_color * (0.7 + granules * 0.3) + mid_color * (0.3 - granules * 0.3);
+    
+    if sunspots < -0.3 {
+        let spot_intensity = smoothstep(-0.3, -0.6, sunspots);
+        color = color * (1.0 - spot_intensity * 0.7) + dark_spot * spot_intensity * 0.7;
+    }
+    
+    if flares > 0.4 {
+        let flare_intensity = smoothstep(0.4, 0.8, flares);
+        color = color * (1.0 - flare_intensity * 0.6) + flare_color * flare_intensity * 0.6;
+    }
+    
+    let pulse = ((time * 1.5).sin() * 0.5 + 0.5) * 0.15;
+    color = color * (1.0 + pulse);
+    
+    let wave_intensity = (waves * 0.5 + 0.5) * 0.1;
+    color = color * (1.0 + wave_intensity);
+    
+    let cx = fragment.position.x - 650.0;
+    let cy = fragment.position.y - 450.0;
+    let dist = (cx * cx + cy * cy).sqrt() / 300.0;
+    let halo = (1.0 - dist.clamp(0.0, 1.0)).powf(0.5);
+    
+    color = color * (0.8 + halo * 0.5);
+    
+    color.x = color.x.clamp(0.0, 1.0);
+    color.y = color.y.clamp(0.0, 1.0);
+    color.z = color.z.clamp(0.0, 1.0);
+    
+    color
 }
 
 pub fn fragment_shaders(
     fragment: &Fragment,
     _uniforms: &Uniforms,
     shader_type: ShaderType,
+    time: f32,
 ) -> Vector3 {
     let base_color = match shader_type {
         ShaderType::Mars => mars_shader(fragment),
         ShaderType::Mocca => mocca_shader(fragment),
-        ShaderType::Sun => sun_shader(fragment),
+        ShaderType::Sun => sun_shader(fragment, time),
         ShaderType::Saturn => saturn_shader(fragment),
         ShaderType::SaturnRing => saturn_ring_shader(fragment),
     };

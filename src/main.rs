@@ -7,6 +7,7 @@ mod vertex;
 mod camera;
 mod shaders;
 mod light;
+mod simplex;
 
 use triangle::triangle;
 use obj_loader::Obj;
@@ -69,6 +70,7 @@ fn render(
     vertex_array: &[Vertex],
     light: &Light,
     shader_type: ShaderType,
+    time: f32,
 ) {
     let mut transformed_vertices = Vec::with_capacity(vertex_array.len());
     for vertex in vertex_array {
@@ -93,7 +95,7 @@ fn render(
     }
 
     for fragment in fragments {
-        let final_color = fragment_shaders(&fragment, uniforms, shader_type);
+        let final_color = fragment_shaders(&fragment, uniforms, shader_type, time);
 
         framebuffer.point(
             fragment.position.x as i32,
@@ -110,7 +112,7 @@ fn main() {
 
     let (mut window, raylib_thread) = raylib::init()
         .size(window_width, window_height)
-        .title("Sistema Solar")
+        .title("Sistema Solar - Shader Dinámico")
         .log_level(TraceLogLevel::LOG_WARNING)
         .build();
 
@@ -148,9 +150,8 @@ fn main() {
         let viewport_matrix =
             create_viewport_matrix(0.0, 0.0, window_width as f32, window_height as f32);
 
-        time += 0.01;
+        time += 0.02;
 
-        // 🌞 Sol
         let sun_model_matrix = create_model_matrix_y(
             Vector3::new(0.0, 0.0, 0.0),
             1.5,
@@ -163,9 +164,8 @@ fn main() {
             viewport_matrix: viewport_matrix,
             is_ring: false,
         };
-        render(&mut framebuffer, &sun_uniforms, &vertex_array, &light, ShaderType::Sun);
+        render(&mut framebuffer, &sun_uniforms, &vertex_array, &light, ShaderType::Sun, time);
 
-        // 🪐 Marte
         let mars_translation = Vector3::new(
             4.5 * (time * 1.5).cos(),
             0.0,
@@ -183,9 +183,8 @@ fn main() {
             viewport_matrix: viewport_matrix,
             is_ring: false,
         };
-        render(&mut framebuffer, &mars_uniforms, &vertex_array, &light, ShaderType::Mars);
+        render(&mut framebuffer, &mars_uniforms, &vertex_array, &light, ShaderType::Mars, time);
 
-        // ☕ Mocca
         let mocca_translation = Vector3::new(
             9.0 * (time * 1.2).cos(),
             0.0,
@@ -203,9 +202,8 @@ fn main() {
             viewport_matrix: viewport_matrix,
             is_ring: false,
         };
-        render(&mut framebuffer, &mocca_uniforms, &vertex_array, &light, ShaderType::Mocca);
+        render(&mut framebuffer, &mocca_uniforms, &vertex_array, &light, ShaderType::Mocca, time);
 
-        // 🪐 Saturno
         let saturn_translation = Vector3::new(
             10.0 * (time * 3.8).cos(),
             0.0,
@@ -223,9 +221,8 @@ fn main() {
             viewport_matrix: viewport_matrix,
             is_ring: false,
         };
-        render(&mut framebuffer, &saturn_uniforms, &vertex_array, &light, ShaderType::Saturn);
+        render(&mut framebuffer, &saturn_uniforms, &vertex_array, &light, ShaderType::Saturn, time);
 
-        // 🪐 Anillos de Saturno
         let saturn_ring_uniforms = Uniforms {
             model_matrix: saturn_model_matrix,
             view_matrix: view_matrix,
@@ -233,7 +230,7 @@ fn main() {
             viewport_matrix: viewport_matrix,
             is_ring: true,
         };
-        render(&mut framebuffer, &saturn_ring_uniforms, &vertex_array, &light, ShaderType::SaturnRing);
+        render(&mut framebuffer, &saturn_ring_uniforms, &vertex_array, &light, ShaderType::SaturnRing, time);
         
         framebuffer.swap_buffers(&mut window, &raylib_thread);
         thread::sleep(Duration::from_millis(16));

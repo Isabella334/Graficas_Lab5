@@ -40,7 +40,6 @@ pub fn triangle(v1: &Vertex, v2: &Vertex, v3: &Vertex, light: &Light) -> Vec<Fra
             let (w1, w2, w3) = barycentric_coordinates(p_x, p_y, v1, v2, v3);
 
             if w1 >= 0.0 && w2 >= 0.0 && w3 >= 0.0 {
-                // ✅ INTERPOLAR LA NORMAL
                 let interpolated_normal = Vector3::new(
                     w1 * v1.transformed_normal.x + w2 * v2.transformed_normal.x + w3 * v3.transformed_normal.x,
                     w1 * v1.transformed_normal.y + w2 * v2.transformed_normal.y + w3 * v3.transformed_normal.y,
